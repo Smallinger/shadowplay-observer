@@ -52,12 +52,25 @@ func (r *rotatingFile) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func dataDir() string {
+var asService bool // running as the Windows service (SYSTEM)
+
+func programDataDir() string {
 	pd := os.Getenv("ProgramData")
 	if pd == "" {
 		pd = `C:\ProgramData`
 	}
 	return filepath.Join(pd, "ShadowplayObserver")
+}
+
+// dataDir is where the regular log lives: ProgramData for the service, the user's
+// local app data for autostart/foreground runs (the user may not write to ProgramData).
+func dataDir() string {
+	if !asService {
+		if la := os.Getenv("LOCALAPPDATA"); la != "" {
+			return filepath.Join(la, "ShadowplayObserver")
+		}
+	}
+	return programDataDir()
 }
 
 func newLogger(console bool) *log.Logger {
@@ -86,7 +99,14 @@ func (h handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<-
 	defer cancel()
 	done := make(chan struct{})
 	m := &Monitor{log: h.log, path: captureLogPath(), press: pressInUserSession}
-	go func() { defer close(done); m.Run(ctx) }()
+	go func() {
+		defer close(done)
+		if !waitForInstance(ctx, h.log.Printf) {
+			return
+		}
+		defer releaseInstance()
+		m.Run(ctx)
+	}()
 	status <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
 	for c := range req {
 		switch c.Cmd {
@@ -107,6 +127,7 @@ func (h handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<-
 }
 
 func runService() {
+	asService = true
 	l := newLogger(false)
 	l.Printf("Service starting (debug=%v)", debugOn)
 	logEnvironment()
@@ -125,7 +146,12 @@ func runConsole() {
 		<-c
 		cancel()
 	}()
-	l := newLogger(true)
+	l := newLogger(!backgroundMode)
+	if !acquireInstance() {
+		l.Print("Another instance (service or autostart) is already running, exiting")
+		return
+	}
+	defer releaseInstance()
 	logEnvironment()
 	m := &Monitor{log: l, path: captureLogPath(), press: func(ctx context.Context) error { return pressHotkey() }}
 	m.Run(ctx)

@@ -12,27 +12,40 @@ Requirements: NVIDIA app (with "NVIDIA Overlay"), Windows 10/11, Go 1.26+ to bui
 
 ```powershell
 go build -ldflags "-s -w" -o shadowplay-observer.exe .
-shadowplay-observer.exe install          # asks for admin rights via UAC
+shadowplay-observer.exe install autostart     # start at logon, no admin needed
+# or
+shadowplay-observer.exe install service       # Windows service, asks for admin rights via UAC
 ```
 
-Put the exe in its final location first, the service points to its path.
+Put the exe in its final location first, both variants point to its path.
 
 | Command | Effect |
 |---|---|
-| `install` | Register as a service (delayed autostart) and start it |
-| `uninstall` | Stop and remove the service |
-| `status` | Show service and Instant Replay status |
+| `install autostart` | Add to the current user's autostart (HKCU `Run`) and start it now. No admin needed. |
+| `install service` | Register a Windows service (delayed autostart, runs as SYSTEM) and start it. Needs admin (UAC). |
+| `uninstall autostart` | Remove the autostart entry and stop the running instance |
+| `uninstall service` | Stop and remove the service |
+| `status` | Show service, autostart and Instant Replay status |
 | `run` | Run in the foreground (testing, Ctrl+C exits) |
 | `press` | Send the hotkey once (helper command of the service) |
 | `-debug` | With `install`/`run`: verbose log next to the exe |
 
+**Service or autostart?** Autostart is the simplest: it runs in your session, needs no admin rights and
+sends the hotkey itself. It starts when you log on. The service starts at boot, before anyone is
+logged in, and launches a helper in the user session to send the hotkey. Use one of them. If both are
+installed, a single-instance lock ensures only one is active at a time (the service takes over when the
+autostart instance ends), otherwise both would toggle the hotkey and cancel each other out.
+
+The autostart entry runs `conhost.exe --headless "<exe>" run --background`, so no console window shows up.
+
 ## Logs
 
-- `%ProgramData%\ShadowplayObserver\observer.log`: regular service log
-- `shadowplay-observer.log` next to the exe: only with `-debug` (also as a service when installed with
-  `install -debug`). Contains the environment, recognized log lines, app status and helper process.
+- Service: `%ProgramData%\ShadowplayObserver\observer.log`
+- Autostart / `run`: `%LOCALAPPDATA%\ShadowplayObserver\observer.log`
+- `shadowplay-observer.log` next to the exe: only with `-debug` (also for the service/autostart when
+  installed with `-debug`). Contains the environment, recognized log lines, app status and helper process.
 
-Both files rotate at about 1 MB (`.old`).
+All files rotate at about 1 MB (`.old`).
 
 ## How it works
 
@@ -74,6 +87,7 @@ state is reliably "off".
 |---|---|
 | `main.go` | Commands and arguments |
 | `service.go` | Service, installation, logging |
+| `autostart.go` | Autostart (HKCU Run key), single-instance lock |
 | `monitor.go` | Monitoring, switching back on |
 | `nvapp.go` | NVIDIA app process, `console.log`, `ShareSettings.json` |
 | `session.go` | Helper process in the user session, sending the hotkey |

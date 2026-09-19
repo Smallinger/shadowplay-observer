@@ -124,6 +124,7 @@ func main() {
 		fmt.Println("Service:       ", serviceStatus())
 		fmt.Println("Autostart:     ", autostartStatus())
 		fmt.Println("Monitoring:    ", pauseDescription())
+		fmt.Println("NVIDIA:        ", nvReadyDescription())
 		fmt.Println("Instant Replay:", lastStateInFile(captureLogPath()), "(per CaptureCore.log)")
 	case "run":
 		runConsole()

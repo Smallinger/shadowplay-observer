@@ -57,6 +57,7 @@ func logEnvironment() {
 	dbg("last app status: %s (ok=%v, line from %s)", s, ok, ts.Format("2006-01-02 15:04:05"))
 	fs, fok := readIREnabled()
 	dbg("ShareSettings.json irEnabled: %s (ok=%v, file=%q)", fs, fok, overlayFile("ShareSettings.json"))
+	dbg("NVIDIA ShadowPlay: %s", nvReadyDescription())
 	if keys, src, err := resolveHotkey(); err != nil {
 		dbg("hotkey: %v", err)
 	} else {

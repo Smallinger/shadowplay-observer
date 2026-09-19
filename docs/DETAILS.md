@@ -11,7 +11,7 @@ Contents
 3. [Run modes: autostart or service](#3-run-modes-autostart-or-service)
 4. [Tray icon and pausing](#4-tray-icon-and-pausing)
 5. [How it detects the state](#5-how-it-detects-the-state)
-6. [How it switches Instant Replay back on](#6-how-it-switches-instant-replay-back-on)
+6. [How it switches Instant Replay back on](#6-how-it-switches-instant-replay-back-on) (incl. readiness check)
 7. [The hotkey, also when you changed it](#7-the-hotkey-also-when-you-changed-it)
 8. [Reboots and app restarts](#8-reboots-and-app-restarts)
 9. [Logs and `-debug`](#9-logs-and--debug)
@@ -43,7 +43,7 @@ robust way that does not touch NVIDIA's internals.
 | `uninstall service` | Stops and removes the service. |
 | `pause [duration]` | Pauses monitoring. `pause 2h`, `pause 30m`; without a duration until `resume`. |
 | `resume` | Resumes monitoring. |
-| `status` | Shows service, autostart, pause state and the Instant Replay state. |
+| `status` | Shows service, autostart, pause state, whether NVIDIA ShadowPlay is ready, and the Instant Replay state. |
 | `run` | Runs in the foreground with console output. Ctrl+C exits. |
 | `run -tray` | Same, plus the tray icon (Exit in its menu also ends it). For starting from a shell without installing anything. |
 | `hotkey` | Prints the Instant Replay toggle hotkey it would press and where it read it from. Presses nothing. |
@@ -151,14 +151,34 @@ When the state changes to off (and the tool is not paused):
 
 1. **Debounce 2 s.** The state flips several times when a game starts. If it is back on by itself the tool
    does nothing.
-2. **Press the hotkey** (see [7](#7-the-hotkey-also-when-you-changed-it)). The keys go down modifiers
+2. **Wait until NVIDIA is ready** (see [6a](#6a-is-nvidia-shadowplay-ready)). Up to 3 minutes.
+3. **Press the hotkey** (see [7](#7-the-hotkey-also-when-you-changed-it)). The keys go down modifiers
    first, and are released in reverse order.
-3. **Confirm up to 15 s.** Success is `irEnabled: true` in the file or an "on" line in the log.
-4. **Retry.** Up to 3 attempts. If the hotkey could not be sent, it waits 20 s before the next try; if it
+4. **Confirm up to 15 s.** Success is `irEnabled: true` in the file or an "on" line in the log.
+5. **Retry.** Up to 3 attempts. If the hotkey could not be sent, it waits 20 s before the next try; if it
    was sent but not confirmed, 5 s. After 3 failed attempts it stops and waits for the next event.
 
 The hotkey only toggles. That is why the checks above matter: pressing it when Instant Replay is already
 on would switch it off.
+
+### 6a. Is NVIDIA ShadowPlay ready?
+
+The hotkey only does something when all three parts of Instant Replay are running. Pressing it earlier
+goes nowhere, or lands in whatever window has focus. So the tool checks first:
+
+| Part | How it is checked |
+|---|---|
+| Service `NvContainerLocalSystem` | Windows service state is "running" |
+| ShadowPlay capture container | a `nvcontainer.exe` outside session 0 whose command line contains `SPUser` (`...NvContainerUser%dSPUser.log`). It hosts the capture and encode threads. The command line is read with `NtQueryInformationProcess`. There are other `nvcontainer` processes too, so the marker matters. |
+| `NVIDIA Overlay.exe` | the process exists. It registers and receives the hotkey. |
+
+If something is missing, the log says what (`NVIDIA ShadowPlay not ready, waiting. Missing: ...`) and the
+tool re-checks every 3 s for up to 3 minutes. Once everything is up it continues. If the time runs out it
+gives up for now and remembers that it still has to switch Instant Replay on: as soon as everything is
+ready, it does. `status` shows the current result in its `NVIDIA:` line, and `-debug` logs it at start.
+
+This is separate from the startup status of the app after a reboot ([8](#8-reboots-and-app-restarts)):
+that one waits for the app to report its state, this one makes sure the parts exist at all.
 
 ## 7. The hotkey, also when you changed it
 
@@ -240,6 +260,7 @@ Windows once, and send `shadowplay-observer.log` if something looks off.
 | `monitor.go` | The monitor loop: state, log tailing, debounce, retries, pause handling |
 | `nvapp.go` | NVIDIA app process start time, `console.log`, `ShareSettings.json` (`irEnabled`) |
 | `hotkey.go` | Finds the current toggle hotkey; key names |
+| `ready.go` | Checks that NVIDIA ShadowPlay (service, capture container, overlay) is up before pressing |
 | `session.go` | Helper process in the user session, sending keys with `SendInput` |
 | `pause.go` | The pause file (`pause`, `resume`) |
 | `tray.go` | Tray icon, message loop, menu (plain Win32 through `syscall`) |
@@ -293,6 +314,7 @@ $env:WRITE_LOGO = "1"; go test -run TestWriteLogo
 | Nothing happens when Instant Replay goes off | `status`: is it paused? Is an instance running? Then read the log. |
 | `run -tray` says "already running" | The service or autostart instance is active. `status` shows which. |
 | Log says `no hotkey is assigned ...` | Assign a hotkey for the Instant Replay toggle in the NVIDIA app. |
+| Log says `NVIDIA ShadowPlay not ready, waiting` | The named part of NVIDIA is not running (yet). `status` shows the same. Start or repair the NVIDIA app. The tool continues by itself. |
 | Hotkey pressed but not confirmed | `hotkey` shows what is pressed. Does that match the app's setting? Another program may have taken the hotkey. |
 | Log says `no active user session` or `WTSQueryUserToken: ...` | Service only: nobody is logged in (yet). It retries. |
 | No tray icon | Look behind the "^" arrow in the notification area. Service mode has none. |

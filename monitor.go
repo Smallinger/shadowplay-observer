@@ -147,7 +147,8 @@ type Monitor struct {
 	path  string
 	press func(ctx context.Context) error // sends the Instant Replay hotkey into the user session
 
-	lastFile irState // last irEnabled value read from ShareSettings.json
+	lastFile     irState // last irEnabled value read from ShareSettings.json
+	waitingReady bool    // gave up waiting for NVIDIA to be ready: retry as soon as it is
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) bool {
@@ -213,6 +214,11 @@ func (m *Monitor) Run(ctx context.Context) {
 				m.log.Print("Monitoring resumed")
 				m.enableIfNeeded(ctx, t, &state)
 			}
+		}
+		// We gave up waiting for NVIDIA earlier: retry as soon as it is ready.
+		if m.waitingReady && len(nvMissing()) == 0 {
+			m.waitingReady = false
+			m.enableIfNeeded(ctx, t, &state)
 		}
 		// New app instance (restart, driver update, ...): query the status again.
 		c, ok := overlayStart()
@@ -294,6 +300,12 @@ func (m *Monitor) ensureOn(ctx context.Context, t *tailer) bool {
 	if evs, _ := m.pollAll(t); m.confirmedOn(evs) {
 		m.log.Print("Instant Replay came back on by itself")
 		return true
+	}
+	// The hotkey only works once the service, the capture container and the overlay are up.
+	m.waitingReady = false
+	if !m.waitReady(ctx) {
+		m.waitingReady = true
+		return false
 	}
 	for attempt := 1; attempt <= 3; attempt++ {
 		if isPaused() {

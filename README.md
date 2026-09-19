@@ -28,7 +28,8 @@ Put the exe in its final location first, both variants point to its path.
 | `pause [duration]` | Pause monitoring, e.g. `pause 2h`, `pause 30m`; without duration until `resume` |
 | `resume` | Resume monitoring |
 | `status` | Show service, autostart, pause and Instant Replay status |
-| `run` | Run in the foreground (testing, Ctrl+C exits) |
+| `run` | Run in the foreground with console output (Ctrl+C exits) |
+| `run -tray` | Same, plus the tray icon (pause toggle, Exit). Handy to start from a shell without installing anything. |
 | `press` | Send the hotkey once (helper command of the service) |
 | `-debug` | With `install`/`run`: verbose log next to the exe |
 
@@ -38,7 +39,7 @@ logged in, and launches a helper in the user session to send the hotkey. Use one
 installed, a single-instance lock ensures only one is active at a time (the service takes over when the
 autostart instance ends), otherwise both would toggle the hotkey and cancel each other out.
 
-**Tray icon.** In autostart mode a small icon appears in the notification area (Windows 11 may put it
+**Tray icon.** In autostart mode and with `run -tray` a small icon appears in the notification area (Windows 11 may put it
 in the overflow flyout first: drag it out to keep it visible). Green logo (`#76B900`) on black = monitoring active, red struck-through logo (`#A31621`) on black =
 paused. Left click toggles pause, right click opens a menu (Pause/Resume, Exit). The tooltip shows the
 state of Instant Replay.

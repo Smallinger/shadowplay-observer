@@ -142,7 +142,8 @@ func runService() {
 	}
 }
 
-// runConsole: monitoring in the foreground (for testing), Ctrl+C exits.
+// runConsole: monitoring in the foreground, Ctrl+C exits. With -tray (or --background from
+// autostart) a tray icon is shown as well.
 func runConsole() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -160,8 +161,9 @@ func runConsole() {
 	defer releaseInstance()
 	logEnvironment()
 	m := &Monitor{log: l, path: captureLogPath(), press: func(ctx context.Context) error { return pressHotkey() }}
-	if backgroundMode {
-		// Autostart: monitor in the background, tray icon on the main thread.
+	if backgroundMode || trayMode {
+		// Tray mode (autostart, or `run -tray` from a shell): monitor in the background,
+		// tray icon on the main thread. Ctrl+C or the tray's Exit ends it.
 		go m.Run(ctx)
 		runTray(ctx, cancel)
 		return

@@ -22,19 +22,22 @@ const usage = `Shadowplay Observer - keeps NVIDIA Instant Replay switched on.
   pause [duration]     Pause monitoring (e.g. pause 2h); without duration until 'resume'
   resume               Resume monitoring
   status               Show service, autostart, pause and Instant Replay status
-  run                  Monitor in the foreground (for testing, Ctrl+C exits)
+  run [-tray]          Monitor in the foreground, Ctrl+C exits; with -tray also show the tray icon
   press                Send the Instant Replay hotkey once (helper command of the service)
 
 Option -debug (with install, run): writes verbose info to
 shadowplay-observer.log next to the exe.
 
-Autostart shows a tray icon: click = pause/resume, right click = menu.
+The tray icon (autostart, or run -tray): click = pause/resume, right click = menu.
 
 Use either the service or autostart. If both are installed, only one of them
 is active at a time.
 `
 
-var backgroundMode bool // started from autostart, no console output
+var (
+	backgroundMode bool // started from autostart: tray icon, no console output
+	trayMode       bool // run -tray: tray icon plus console output
+)
 
 func main() {
 	var args []string
@@ -43,6 +46,8 @@ func main() {
 		switch strings.ToLower(a) {
 		case "-debug", "--debug":
 			debugOn = true
+		case "-tray", "--tray":
+			trayMode = true
 		case "--background":
 			backgroundMode = true
 		case "--elevated":

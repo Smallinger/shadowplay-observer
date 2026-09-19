@@ -107,7 +107,22 @@ func backgroundPIDs() []uint32 {
 	return pids
 }
 
+// stopBackgroundInstances asks the tray window to close first (so the tray icon is removed
+// cleanly instead of lingering as a ghost), then terminates whatever is still running.
 func stopBackgroundInstances() {
+	pFindWindow := user32.NewProc("FindWindowW")
+	class, _ := windows.UTF16PtrFromString("ShadowplayObserverTray")
+	for i := 0; i < 5; i++ { // one window per instance
+		hwnd, _, _ := pFindWindow.Call(uintptr(unsafe.Pointer(class)), 0)
+		if hwnd == 0 {
+			break
+		}
+		pPostMessage.Call(hwnd, wmClose, 0, 0)
+		time.Sleep(300 * time.Millisecond)
+	}
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline) && len(backgroundPIDs()) > 0; {
+		time.Sleep(100 * time.Millisecond)
+	}
 	for _, pid := range backgroundPIDs() {
 		h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid)
 		if err != nil {

@@ -11,7 +11,7 @@ import (
 
 // A minimal tray icon (plain Win32, no dependencies): left click toggles pause,
 // right click opens a menu with the toggle and Exit. Only used in autostart mode.
-// Green logo on black = monitoring active, red struck-through logo on black = paused.
+// Green logo on dark grey = monitoring active, red struck-through logo = paused.
 
 const (
 	wmDestroy    = 0x0002
@@ -132,7 +132,7 @@ func iconSize() int {
 	return int(r)
 }
 
-// makeIcon renders the glyph in fg on black (see icon.go) and turns it into an HICON.
+// makeIcon renders the glyph in fg on the dark grey tile (see icon.go) and turns it into an HICON.
 func makeIcon(g glyph, fg [3]byte) uintptr {
 	n := iconSize()
 	pix := renderIcon(n, g, fg, trayFill)

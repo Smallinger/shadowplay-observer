@@ -17,7 +17,7 @@ func TestGlyphsParseAndRender(t *testing.T) {
 			pix := renderIcon(n, g, colorActive, trayFill)
 			lit := 0
 			for i := 0; i < n*n; i++ {
-				if pix[i*4+1] > 0 { // green channel
+				if pix[i*4+1] != colorBackground[1] { // green channel differs from the tile
 					lit++
 				}
 				if pix[i*4+3] != 255 {
@@ -43,7 +43,7 @@ func TestPaintedCentre(t *testing.T) {
 	}
 }
 
-// TestWriteLogo regenerates assets/logo.png (green logo on black, used in the README):
+// TestWriteLogo regenerates assets/logo.png (green logo on the dark grey tile, used in the README):
 //
 //	WRITE_LOGO=1 go test -run TestWriteLogo
 func TestWriteLogo(t *testing.T) {

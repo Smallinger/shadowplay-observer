@@ -22,6 +22,10 @@ var iconFS embed.FS
 var (
 	colorActive = [3]byte{0x76, 0xB9, 0x00} // green: monitoring active
 	colorPaused = [3]byte{0xA3, 0x16, 0x21} // red: paused
+
+	// Tile background of the tray icon. Measured from the NVIDIA app's own tray icon in the
+	// notification area, which is dark grey rather than black.
+	colorBackground = [3]byte{0x1D, 0x1E, 0x1E}
 )
 
 type point struct{ x, y float64 }
@@ -358,9 +362,9 @@ func (g glyph) covers(x, y float64) bool {
 	return false
 }
 
-// renderIcon returns an n×n top-down BGRA image: the glyph in fg on an opaque black square.
+// renderIcon returns an n×n top-down BGRA image: the glyph in fg on an opaque square in colorBackground.
 // The glyphs use a 24 unit box and their artwork spans about 22 units (1..23). fill is the
-// share of the icon that artwork should take: 1 = edge to edge, 0.78 = a visible black margin.
+// share of the icon that artwork should take: 1 = edge to edge, 0.8 = a visible margin.
 func renderIcon(n int, g glyph, fg [3]byte, fill float64) []byte {
 	const ss = 4 // 4x4 supersampling for smooth edges at 16..32 px
 	span := 22 / fill
@@ -380,18 +384,23 @@ func renderIcon(n int, g glyph, fg [3]byte, fill float64) []byte {
 			}
 			cov := float64(hit) / (ss * ss)
 			i := (py*n + px) * 4
-			pix[i] = byte(float64(fg[2]) * cov) // B
-			pix[i+1] = byte(float64(fg[1]) * cov)
-			pix[i+2] = byte(float64(fg[0]) * cov) // R
+			pix[i] = blend(colorBackground[2], fg[2], cov) // B
+			pix[i+1] = blend(colorBackground[1], fg[1], cov)
+			pix[i+2] = blend(colorBackground[0], fg[0], cov) // R
 			pix[i+3] = 255
 		}
 	}
 	return pix
 }
 
-// How much of the icon the artwork fills: the tray icon keeps some black margin, the
+// How much of the icon the artwork fills: the tray icon keeps some margin, the
 // README logo is nearly edge to edge.
 const (
-	trayFill = 0.78
+	trayFill = 0.82
 	logoFill = 0.96
 )
+
+// blend mixes bg and fg by coverage (0..1).
+func blend(bg, fg byte, cov float64) byte {
+	return byte(float64(bg) + (float64(fg)-float64(bg))*cov + 0.5)
+}

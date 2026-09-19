@@ -44,7 +44,7 @@ installed, a single-instance lock ensures only one is active at a time (the serv
 autostart instance ends), otherwise both would toggle the hotkey and cancel each other out.
 
 **Tray icon.** In autostart mode and with `run -tray` a small icon appears in the notification area (Windows 11 may put it
-in the overflow flyout first: drag it out to keep it visible). Green logo (`#76B900`) on black = monitoring active, red struck-through logo (`#A31621`) on black =
+in the overflow flyout first: drag it out to keep it visible). Green logo (`#76B900`) on a dark grey tile (`#1D1E1E`, like NVIDIA's own tray icon) = monitoring active, red struck-through logo (`#A31621`) =
 paused. Left click toggles pause, right click opens a menu (Pause/Resume, Exit). The tooltip shows the
 state of Instant Replay.
 

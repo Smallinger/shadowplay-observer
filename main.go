@@ -23,6 +23,7 @@ const usage = `Shadowplay Observer - keeps NVIDIA Instant Replay switched on.
   resume               Resume monitoring
   status               Show service, autostart, pause and Instant Replay status
   run [-tray]          Monitor in the foreground, Ctrl+C exits; with -tray also show the tray icon
+  hotkey               Show the Instant Replay toggle hotkey currently set in the NVIDIA app
   press                Send the Instant Replay hotkey once (helper command of the service)
 
 Option -debug (with install, run): writes verbose info to
@@ -126,6 +127,13 @@ func main() {
 		fmt.Println("Instant Replay:", lastStateInFile(captureLogPath()), "(per CaptureCore.log)")
 	case "run":
 		runConsole()
+	case "hotkey":
+		keys, source, err := resolveHotkey()
+		if err != nil {
+			fmt.Println("Instant Replay hotkey:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Instant Replay hotkey: %s (from %s)\n", formatHotkey(keys), source)
 	case "press":
 		if err := pressHotkey(); err != nil {
 			fmt.Fprintln(os.Stderr, err)

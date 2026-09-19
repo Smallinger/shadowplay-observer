@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -301,6 +302,10 @@ func (m *Monitor) ensureOn(ctx context.Context, t *tailer) bool {
 		}
 		if err := m.press(ctx); err != nil {
 			m.log.Printf("Attempt %d: sending hotkey failed: %v", attempt, err)
+			if errors.Is(err, errNoHotkey) {
+				m.log.Print("Assign a hotkey to the Instant Replay toggle in the NVIDIA app, then toggle it once or restart")
+				return false // retrying cannot help
+			}
 			if !sleepCtx(ctx, 20*time.Second) {
 				return false
 			}

@@ -34,6 +34,7 @@ Put the exe in its final location first, both variants point to its path.
 | `status` | Show service, autostart, pause and Instant Replay status |
 | `run` | Run in the foreground with console output (Ctrl+C exits) |
 | `run -tray` | Same, plus the tray icon (pause toggle, Exit). Handy to start from a shell without installing anything. |
+| `hotkey` | Show the Instant Replay toggle hotkey currently set in the NVIDIA app and where it was read from |
 | `press` | Send the hotkey once (helper command of the service) |
 | `-debug` | With `install`/`run`: verbose log next to the exe |
 
@@ -76,11 +77,22 @@ All files rotate at about 1 MB (`.old`).
 
 The state is not stored in the registry, which only holds settings.
 
-**Turning it back on.** The service sends the Instant Replay hotkey stored in the registry
-(`IRToggleHKey*`, default Alt+Shift+F10). A service runs in session 0 and cannot send keystrokes into
-the user session. So it launches the same exe as a helper (`press`) with the logged-in user's token on
-`winsta0\default`. Afterwards it waits for confirmation (`irEnabled: true` or the log). Up to 3
-attempts, then it waits for the next event.
+**Turning it back on.** The service sends the Instant Replay toggle hotkey. A service runs in
+session 0 and cannot send keystrokes into the user session. So it launches the same exe as a helper
+(`press`) with the logged-in user's token on `winsta0\default`. Afterwards it waits for confirmation
+(`irEnabled: true` or the log). Up to 3 attempts, then it waits for the next event.
+
+**Custom hotkeys.** If you change the hotkey in the NVIDIA app, nothing needs to be reconfigured: it is
+looked up again on every press, in this order:
+
+1. `ShareSettings.json`, `settings.shortcuts.DVRToggle` (virtual-key codes). The overlay writes it on
+   every change and registers the hotkey from it, so this is what actually works.
+2. The registry (`NVSPCAPS\IRToggleHKey*`). The overlay only copies the file's values there at start, so
+   it can be out of date until the app restarts; that is why it is only the fallback.
+3. The NVIDIA default, Alt+Shift+F10.
+
+If you remove the shortcut in the NVIDIA app there is nothing to press: the exe logs that and does not
+retry until you assign one again. `shadowplay-observer.exe hotkey` shows what it would press and why.
 
 **After a reboot or app restart.** The service detects a new `NVIDIA Overlay.exe` instance by its
 process start time, not by system uptime (which is unreliable because of Fast Startup). It waits for
@@ -111,6 +123,7 @@ state is reliably "off".
 | `monitor.go` | Monitoring, switching back on |
 | `nvapp.go` | NVIDIA app process, `console.log`, `ShareSettings.json` |
 | `session.go` | Helper process in the user session, sending the hotkey |
+| `hotkey.go` | Finds the current Instant Replay toggle hotkey (`ShareSettings.json`, registry, default) |
 | `debug.go` | `-debug` output |
 
 ## Assets and licensing

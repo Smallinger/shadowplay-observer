@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/registry"
 )
 
 // ---- Service side: start the helper process in the user session ----
@@ -19,6 +17,10 @@ import (
 func pressInUserSession(ctx context.Context) error {
 	exe, err := os.Executable()
 	if err != nil {
+		return err
+	}
+	// Resolve here as well so a removed shortcut is reported clearly instead of as a helper failure.
+	if _, _, err := resolveHotkey(); err != nil {
 		return err
 	}
 	sid := windows.WTSGetActiveConsoleSessionId()
@@ -71,44 +73,6 @@ func pressInUserSession(ctx context.Context) error {
 
 // ---- Helper side (runs as the user): send the hotkey ----
 
-const (
-	vkAlt   = 0x12
-	vkShift = 0x10
-	vkF10   = 0x79
-)
-
-// irToggleHotkey reads the Instant Replay hotkey from the user's registry
-// (default: Alt+Shift+F10).
-func irToggleHotkey() []uint16 {
-	def := []uint16{vkAlt, vkShift, vkF10}
-	k, err := registry.OpenKey(registry.CURRENT_USER,
-		`Software\NVIDIA Corporation\Global\ShadowPlay\NVSPCAPS`, registry.QUERY_VALUE)
-	if err != nil {
-		return def
-	}
-	defer k.Close()
-	get := func(name string) (uint32, bool) {
-		b, _, err := k.GetBinaryValue(name)
-		if err != nil || len(b) < 4 {
-			return 0, false
-		}
-		return binary.LittleEndian.Uint32(b), true
-	}
-	n, ok := get("IRToggleHKeyCount")
-	if !ok || n == 0 || n > 6 {
-		return def
-	}
-	var keys []uint16
-	for i := range n {
-		v, ok := get(fmt.Sprintf("IRToggleHKey%d", i))
-		if !ok || v == 0 || v > 0xFF {
-			return def
-		}
-		keys = append(keys, uint16(v))
-	}
-	return keys
-}
-
 type keyInput struct {
 	typ   uint32
 	_     uint32
@@ -122,6 +86,7 @@ type keyInput struct {
 
 const (
 	inputKeyboard    = 1
+	keyeventExtended = 0x1
 	keyeventKeyUp    = 0x2
 	keyeventScancode = 0x8
 )
@@ -135,6 +100,9 @@ var (
 func sendKey(vk uint16, up bool) error {
 	scan, _, _ := procMapVK.Call(uintptr(vk), 0) // MAPVK_VK_TO_VSC
 	in := keyInput{typ: inputKeyboard, vk: vk, scan: uint16(scan)}
+	if isExtendedKey(vk) {
+		in.flags |= keyeventExtended
+	}
 	if up {
 		in.flags |= keyeventKeyUp
 	}
@@ -147,7 +115,11 @@ func sendKey(vk uint16, up bool) error {
 
 // pressHotkey presses the key combination (modifiers first) and releases it again.
 func pressHotkey() error {
-	keys := irToggleHotkey()
+	keys, source, err := resolveHotkey()
+	if err != nil {
+		return err
+	}
+	dbg("Pressing %s (from %s)", formatHotkey(keys), source)
 	for _, k := range keys {
 		if err := sendKey(k, false); err != nil {
 			return err

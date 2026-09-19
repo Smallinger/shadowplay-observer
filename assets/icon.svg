@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="200" height="200">
+  <defs>
+    <!-- Ein Pfeil-Segment, das für die perfekte Symmetrie zweimal verwendet wird -->
+    <path id="arrow" d="M 72.5 76.8 A 35 35 0 0 1 25.25 25.25 L 21 21 L 45 15 L 39 39 L 35.15 35.15 A 21 21 0 0 0 63.5 66.1 Z" fill="#ffffff" />
+  </defs>
+  
+  <!-- Zentraler Punkt -->
+  <circle cx="50" cy="50" r="13" fill="#ffffff" />
+  
+  <!-- Linker Pfeil -->
+  <use href="#arrow" />
+  
+  <!-- Rechter Pfeil (um 180 Grad gedreht) -->
+  <use href="#arrow" transform="rotate(180 50 50)" />
+</svg>

@@ -39,7 +39,7 @@ installed, a single-instance lock ensures only one is active at a time (the serv
 autostart instance ends), otherwise both would toggle the hotkey and cancel each other out.
 
 **Tray icon.** In autostart mode a small icon appears in the notification area (Windows 11 may put it
-in the overflow flyout first: drag it out to keep it visible). Green = monitoring active, grey with bars =
+in the overflow flyout first: drag it out to keep it visible). Green logo (`#76B900`) on black = monitoring active, red logo (`#A31621`) on black =
 paused. Left click toggles pause, right click opens a menu (Pause/Resume, Exit). The tooltip shows the
 state of Instant Replay.
 
@@ -102,6 +102,7 @@ state is reliably "off".
 | `autostart.go` | Autostart (HKCU Run key), single-instance lock |
 | `pause.go` | Pause state file (`pause` / `resume`) |
 | `tray.go` | Tray icon (plain Win32) |
+| `icon.go` | Draws the tray icon in code from `assets/icon.svg` (green/red logo on black) |
 | `monitor.go` | Monitoring, switching back on |
 | `nvapp.go` | NVIDIA app process, `console.log`, `ShareSettings.json` |
 | `session.go` | Helper process in the user session, sending the hotkey |

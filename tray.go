@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"math"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -12,7 +11,7 @@ import (
 
 // A minimal tray icon (plain Win32, no dependencies): left click toggles pause,
 // right click opens a menu with the toggle and Exit. Only used in autostart mode.
-// Green icon = monitoring active, grey icon with bars = paused.
+// Green logo on black = monitoring active, red logo on black = paused.
 
 const (
 	wmDestroy    = 0x0002
@@ -57,6 +56,7 @@ var (
 	pShellNotifyIcon  = shell32.NewProc("Shell_NotifyIconW")
 	pCreateBitmap     = gdi32.NewProc("CreateBitmap")
 	pDeleteObject     = gdi32.NewProc("DeleteObject")
+	pGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 )
 
 type wndClassEx struct {
@@ -123,44 +123,22 @@ var tray struct {
 	initialized bool
 }
 
-// makeIcon draws a 32x32 anti-aliased disc, optionally with two pause bars.
-func makeIcon(r, g, b byte, bars bool) uintptr {
-	const n = 32
-	pix := make([]byte, n*n*4) // BGRA, top-down
-	set := func(x, y int, r, g, b byte, a float64) {
-		i := (y*n + x) * 4
-		pix[i], pix[i+1], pix[i+2], pix[i+3] = byte(float64(b)*a), byte(float64(g)*a), byte(float64(r)*a), byte(255*a)
+// iconSize is the small icon size of the current DPI (16 at 100%, 24 at 150%, ...).
+func iconSize() int {
+	r, _, _ := pGetSystemMetrics.Call(49) // SM_CXSMICON
+	if r < 16 {
+		return 16
 	}
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			d := math.Hypot(float64(x)+0.5-n/2, float64(y)+0.5-n/2)
-			a := math.Max(0, math.Min(1, n/2-1-d+0.5))
-			if a > 0 {
-				set(x, y, r, g, b, a)
-			}
-		}
-	}
-	if bars {
-		for y := 9; y < 23; y++ {
-			for _, x0 := range []int{10, 18} {
-				for x := x0; x < x0+4; x++ {
-					set(x, y, 255, 255, 255, 1)
-				}
-			}
-		}
-	} else { // small white dot in the middle: "recording"
-		for y := 0; y < n; y++ {
-			for x := 0; x < n; x++ {
-				d := math.Hypot(float64(x)+0.5-n/2, float64(y)+0.5-n/2)
-				if a := math.Max(0, math.Min(1, 6-d+0.5)); a > 0 {
-					set(x, y, 255, 255, 255, a)
-				}
-			}
-		}
-	}
-	color, _, _ := pCreateBitmap.Call(n, n, 1, 32, uintptr(unsafe.Pointer(&pix[0])))
-	maskBits := make([]byte, n*n/8) // all zero: use the alpha channel
-	mask, _, _ := pCreateBitmap.Call(n, n, 1, 1, uintptr(unsafe.Pointer(&maskBits[0])))
+	return int(r)
+}
+
+// makeIcon renders the logo in fg on black (see icon.go) and turns it into an HICON.
+func makeIcon(fg [3]byte) uintptr {
+	n := iconSize()
+	pix := renderIcon(n, fg)
+	color, _, _ := pCreateBitmap.Call(uintptr(n), uintptr(n), 1, 32, uintptr(unsafe.Pointer(&pix[0])))
+	maskBits := make([]byte, ((n+15)/16*2)*n) // 1 bpp rows are 16-bit aligned; all zero = opaque
+	mask, _, _ := pCreateBitmap.Call(uintptr(n), uintptr(n), 1, 1, uintptr(unsafe.Pointer(&maskBits[0])))
 	ii := iconInfo{isIcon: 1, mask: mask, color: color}
 	h, _, _ := pCreateIconInd.Call(uintptr(unsafe.Pointer(&ii)))
 	pDeleteObject.Call(color)
@@ -290,8 +268,8 @@ func runTray(ctx context.Context, cancel context.CancelFunc) {
 	r, _, _ := pRegisterWinMsg.Call(uintptr(unsafe.Pointer(tm)))
 	tray.taskbarMsg = uint32(r)
 
-	tray.iconActive = makeIcon(46, 160, 67, false)
-	tray.iconPaused = makeIcon(130, 130, 130, true)
+	tray.iconActive = makeIcon(colorActive)
+	tray.iconPaused = makeIcon(colorPaused)
 	defer pDestroyIcon.Call(tray.iconActive)
 	defer pDestroyIcon.Call(tray.iconPaused)
 

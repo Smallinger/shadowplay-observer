@@ -11,7 +11,7 @@ import (
 
 // A minimal tray icon (plain Win32, no dependencies): left click toggles pause,
 // right click opens a menu with the toggle and Exit. Only used in autostart mode.
-// Green logo on black = monitoring active, red logo on black = paused.
+// Green logo on black = monitoring active, red struck-through logo on black = paused.
 
 const (
 	wmDestroy    = 0x0002
@@ -132,10 +132,10 @@ func iconSize() int {
 	return int(r)
 }
 
-// makeIcon renders the logo in fg on black (see icon.go) and turns it into an HICON.
-func makeIcon(fg [3]byte) uintptr {
+// makeIcon renders the glyph in fg on black (see icon.go) and turns it into an HICON.
+func makeIcon(g glyph, fg [3]byte) uintptr {
 	n := iconSize()
-	pix := renderIcon(n, fg)
+	pix := renderIcon(n, g, fg)
 	color, _, _ := pCreateBitmap.Call(uintptr(n), uintptr(n), 1, 32, uintptr(unsafe.Pointer(&pix[0])))
 	maskBits := make([]byte, ((n+15)/16*2)*n) // 1 bpp rows are 16-bit aligned; all zero = opaque
 	mask, _, _ := pCreateBitmap.Call(uintptr(n), uintptr(n), 1, 1, uintptr(unsafe.Pointer(&maskBits[0])))
@@ -268,8 +268,8 @@ func runTray(ctx context.Context, cancel context.CancelFunc) {
 	r, _, _ := pRegisterWinMsg.Call(uintptr(unsafe.Pointer(tm)))
 	tray.taskbarMsg = uint32(r)
 
-	tray.iconActive = makeIcon(colorActive)
-	tray.iconPaused = makeIcon(colorPaused)
+	tray.iconActive = makeIcon(glyphActive, colorActive)
+	tray.iconPaused = makeIcon(glyphPaused, colorPaused)
 	defer pDestroyIcon.Call(tray.iconActive)
 	defer pDestroyIcon.Call(tray.iconPaused)
 

@@ -39,7 +39,7 @@ installed, a single-instance lock ensures only one is active at a time (the serv
 autostart instance ends), otherwise both would toggle the hotkey and cancel each other out.
 
 **Tray icon.** In autostart mode a small icon appears in the notification area (Windows 11 may put it
-in the overflow flyout first: drag it out to keep it visible). Green logo (`#76B900`) on black = monitoring active, red logo (`#A31621`) on black =
+in the overflow flyout first: drag it out to keep it visible). Green logo (`#76B900`) on black = monitoring active, red struck-through logo (`#A31621`) on black =
 paused. Left click toggles pause, right click opens a menu (Pause/Resume, Exit). The tooltip shows the
 state of Instant Replay.
 
@@ -102,8 +102,15 @@ state is reliably "off".
 | `autostart.go` | Autostart (HKCU Run key), single-instance lock |
 | `pause.go` | Pause state file (`pause` / `resume`) |
 | `tray.go` | Tray icon (plain Win32) |
-| `icon.go` | Draws the tray icon in code from `assets/icon.svg` (green/red logo on black) |
+| `icon.go` | Tiny SVG path renderer that draws the tray icons from the embedded `assets/nvidia/*.svg` |
 | `monitor.go` | Monitoring, switching back on |
 | `nvapp.go` | NVIDIA app process, `console.log`, `ShareSettings.json` |
 | `session.go` | Helper process in the user session, sending the hotkey |
 | `debug.go` | `-debug` output |
+
+## Assets and licensing
+
+`assets/nvidia/replay.svg` and `replay_disabled.svg` are the Instant Replay icons of the NVIDIA app
+(extracted from its overlay, sprite symbols `replay` and `replay_disabled`), embedded into the exe for
+the tray icon. They belong to NVIDIA. Keep the repository private, or replace them (for example with
+`assets/icon.svg`, a similar own drawing) before publishing.

@@ -1,0 +1,242 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
+)
+
+const (
+	svcName = "ShadowplayObserver"
+	svcDesc = "Hält den NVIDIA-Videobeweis (Instant Replay) dauerhaft eingeschaltet."
+)
+
+// ---- Logging (Datei mit einfacher Rotation) ----
+
+type rotatingFile struct {
+	mu   sync.Mutex
+	path string
+	f    *os.File
+	size int64
+}
+
+func (r *rotatingFile) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.f == nil || r.size > 1<<20 {
+		if r.f != nil {
+			r.f.Close()
+			os.Rename(r.path, r.path+".old")
+		}
+		f, err := os.OpenFile(r.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return 0, err
+		}
+		r.f = f
+		r.size = 0
+		if fi, err := f.Stat(); err == nil {
+			r.size = fi.Size()
+		}
+	}
+	n, err := r.f.Write(p)
+	r.size += int64(n)
+	return n, err
+}
+
+func dataDir() string {
+	pd := os.Getenv("ProgramData")
+	if pd == "" {
+		pd = `C:\ProgramData`
+	}
+	return filepath.Join(pd, "ShadowplayObserver")
+}
+
+func newLogger(console bool) *log.Logger {
+	os.MkdirAll(dataDir(), 0o755)
+	var w io.Writer = &rotatingFile{path: filepath.Join(dataDir(), "observer.log")}
+	if debugOn {
+		w = io.MultiWriter(w, &rotatingFile{path: debugLogPath()})
+	}
+	if console {
+		w = io.MultiWriter(w, os.Stdout)
+	}
+	l := log.New(w, "", log.Ldate|log.Ltime|log.Lmicroseconds)
+	if debugOn {
+		debugOut = l
+	}
+	return l
+}
+
+// ---- Dienst ----
+
+type handler struct{ log *log.Logger }
+
+func (h handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<- svc.Status) (bool, uint32) {
+	status <- svc.Status{State: svc.StartPending}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	m := &Monitor{log: h.log, path: captureLogPath(), press: pressInUserSession}
+	go func() { defer close(done); m.Run(ctx) }()
+	status <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
+	for c := range req {
+		switch c.Cmd {
+		case svc.Interrogate:
+			status <- c.CurrentStatus
+		case svc.Stop, svc.Shutdown:
+			status <- svc.Status{State: svc.StopPending}
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+			}
+			h.log.Print("Dienst beendet")
+			return false, 0
+		}
+	}
+	return false, 0
+}
+
+func runService() {
+	l := newLogger(false)
+	l.Printf("Dienst startet (debug=%v)", debugOn)
+	logEnvironment()
+	if err := svc.Run(svcName, handler{l}); err != nil {
+		l.Printf("svc.Run: %v", err)
+	}
+}
+
+// runConsole: Überwachung im Vordergrund (zum Testen), Strg+C beendet.
+func runConsole() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		c := make(chan os.Signal, 1)
+		notifyInterrupt(c)
+		<-c
+		cancel()
+	}()
+	l := newLogger(true)
+	logEnvironment()
+	m := &Monitor{log: l, path: captureLogPath(), press: func(ctx context.Context) error { return pressHotkey() }}
+	m.Run(ctx)
+}
+
+// ---- Installation ----
+
+func installService(debug bool) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("Dienstverwaltung: %w", err)
+	}
+	defer m.Disconnect()
+
+	if s, err := m.OpenService(svcName); err == nil {
+		s.Close()
+		return fmt.Errorf("Dienst %q ist schon installiert (erst 'uninstall')", svcName)
+	}
+	s, err := m.CreateService(svcName, exe, mgr.Config{
+		DisplayName:      "Shadowplay Observer",
+		Description:      svcDesc,
+		StartType:        mgr.StartAutomatic,
+		DelayedAutoStart: true,
+	}, svcArgs(debug)...)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	s.SetRecoveryActions([]mgr.RecoveryAction{
+		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: time.Minute},
+	}, 86400)
+	if err := s.Start(); err != nil {
+		return fmt.Errorf("installiert, aber Start fehlgeschlagen: %w", err)
+	}
+	return nil
+}
+
+func uninstallService() error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(svcName)
+	if err != nil {
+		return fmt.Errorf("Dienst %q nicht gefunden", svcName)
+	}
+	defer s.Close()
+	if st, err := s.Query(); err == nil && st.State != svc.Stopped {
+		s.Control(svc.Stop)
+		for i := 0; i < 20; i++ {
+			time.Sleep(500 * time.Millisecond)
+			if st, err := s.Query(); err != nil || st.State == svc.Stopped {
+				break
+			}
+		}
+	}
+	return s.Delete()
+}
+
+func serviceStatus() string {
+	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return "unbekannt (" + err.Error() + ")"
+	}
+	defer windows.CloseServiceHandle(scm)
+	name, _ := windows.UTF16PtrFromString(svcName)
+	h, err := windows.OpenService(scm, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		return "nicht installiert"
+	}
+	defer windows.CloseServiceHandle(h)
+	var st windows.SERVICE_STATUS
+	if err := windows.QueryServiceStatus(h, &st); err != nil {
+		return "unbekannt"
+	}
+	names := map[uint32]string{windows.SERVICE_STOPPED: "gestoppt", windows.SERVICE_START_PENDING: "startet", windows.SERVICE_STOP_PENDING: "stoppt", windows.SERVICE_RUNNING: "läuft"}
+	if n, ok := names[st.CurrentState]; ok {
+		return n
+	}
+	return fmt.Sprint(st.CurrentState)
+}
+
+func isElevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
+
+// relaunchElevated startet die exe mit denselben Argumenten per UAC neu.
+func relaunchElevated(args []string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	var cmdline string
+	for _, a := range args {
+		cmdline += a + " "
+	}
+	cmdline += "--elevated"
+	verb, _ := windows.UTF16PtrFromString("runas")
+	file, _ := windows.UTF16PtrFromString(exe)
+	params, _ := windows.UTF16PtrFromString(cmdline)
+	return windows.ShellExecute(0, verb, file, params, nil, windows.SW_SHOWNORMAL)
+}
+
+func svcArgs(debug bool) []string {
+	if debug {
+		return []string{"-debug"}
+	}
+	return nil
+}

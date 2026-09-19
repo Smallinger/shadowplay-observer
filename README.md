@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Shadowplay Observer" width="160">
+</p>
+
 # Shadowplay Observer
 
 A small Windows service written in Go that keeps **Instant Replay** of the NVIDIA app switched on

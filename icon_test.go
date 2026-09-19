@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"testing"
+)
 
 func TestGlyphsParseAndRender(t *testing.T) {
 	for name, g := range map[string]glyph{"active": glyphActive, "paused": glyphPaused} {
@@ -34,5 +40,28 @@ func TestPaintedCentre(t *testing.T) {
 	// The ring's hollow between dot and ring must stay empty.
 	if glyphActive.covers(12, 12-5.5) {
 		t.Error("active glyph: gap between dot and ring is filled")
+	}
+}
+
+// TestWriteLogo regenerates assets/logo.png (green logo on black, used in the README):
+//
+//	WRITE_LOGO=1 go test -run TestWriteLogo
+func TestWriteLogo(t *testing.T) {
+	if os.Getenv("WRITE_LOGO") == "" {
+		t.Skip("set WRITE_LOGO=1 to regenerate assets/logo.png")
+	}
+	const n = 512
+	pix := renderIcon(n, glyphActive, colorActive)
+	img := image.NewRGBA(image.Rect(0, 0, n, n))
+	for i := 0; i < n*n; i++ {
+		img.Set(i%n, i/n, color.RGBA{pix[i*4+2], pix[i*4+1], pix[i*4], 255})
+	}
+	f, err := os.Create("assets/logo.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
 	}
 }

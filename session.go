@@ -12,10 +12,10 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// ---- Dienst-Seite: Helferprozess in der Benutzersitzung starten ----
+// ---- Service side: start the helper process in the user session ----
 
-// pressInUserSession startet "<exe> press" mit dem Token des angemeldeten Benutzers
-// auf dessen Desktop. Ein Dienst (Session 0) kann selbst keine Tasten dorthin senden.
+// pressInUserSession starts "<exe> press" with the logged-in user's token
+// on their desktop. A service (session 0) cannot send keystrokes there itself.
 func pressInUserSession(ctx context.Context) error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -23,9 +23,9 @@ func pressInUserSession(ctx context.Context) error {
 	}
 	sid := windows.WTSGetActiveConsoleSessionId()
 	if sid == 0xFFFFFFFF {
-		return fmt.Errorf("keine aktive Benutzersitzung")
+		return fmt.Errorf("no active user session")
 	}
-	dbg("Starte Helfer in Sitzung %d", sid)
+	dbg("Starting helper in session %d", sid)
 	var userTok windows.Token
 	if err := windows.WTSQueryUserToken(sid, &userTok); err != nil {
 		return fmt.Errorf("WTSQueryUserToken: %w", err)
@@ -58,18 +58,18 @@ func pressInUserSession(ctx context.Context) error {
 	ev, err := windows.WaitForSingleObject(pi.Process, uint32((15 * time.Second).Milliseconds()))
 	if err != nil || ev != windows.WAIT_OBJECT_0 {
 		windows.TerminateProcess(pi.Process, 1)
-		return fmt.Errorf("Helferprozess ohne Ergebnis (wait=%d, err=%v)", ev, err)
+		return fmt.Errorf("helper process gave no result (wait=%d, err=%v)", ev, err)
 	}
 	var code uint32
 	windows.GetExitCodeProcess(pi.Process, &code)
-	dbg("Helferprozess beendet, Exitcode %d", code)
+	dbg("Helper process finished, exit code %d", code)
 	if code != 0 {
-		return fmt.Errorf("Helferprozess beendet mit Code %d", code)
+		return fmt.Errorf("helper process exited with code %d", code)
 	}
 	return nil
 }
 
-// ---- Helfer-Seite (läuft als Benutzer): Hotkey senden ----
+// ---- Helper side (runs as the user): send the hotkey ----
 
 const (
 	vkAlt   = 0x12
@@ -77,8 +77,8 @@ const (
 	vkF10   = 0x79
 )
 
-// irToggleHotkey liest den Videobeweis-Hotkey aus der Registry des Benutzers
-// (Standard: Alt+Shift+F10).
+// irToggleHotkey reads the Instant Replay hotkey from the user's registry
+// (default: Alt+Shift+F10).
 func irToggleHotkey() []uint16 {
 	def := []uint16{vkAlt, vkShift, vkF10}
 	k, err := registry.OpenKey(registry.CURRENT_USER,
@@ -145,7 +145,7 @@ func sendKey(vk uint16, up bool) error {
 	return nil
 }
 
-// pressHotkey drückt die Tastenkombination (Modifier zuerst) und lässt sie wieder los.
+// pressHotkey presses the key combination (modifiers first) and releases it again.
 func pressHotkey() error {
 	keys := irToggleHotkey()
 	for _, k := range keys {

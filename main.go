@@ -12,17 +12,17 @@ import (
 
 func notifyInterrupt(c chan os.Signal) { signal.Notify(c, os.Interrupt) }
 
-const usage = `Shadowplay Observer - hält den NVIDIA-Videobeweis (Instant Replay) eingeschaltet.
+const usage = `Shadowplay Observer - keeps NVIDIA Instant Replay switched on.
 
-  install     Als Windows-Dienst registrieren (Autostart) und starten
-              (mit -debug: ausführliches Log neben der exe)
-  uninstall   Dienst stoppen und entfernen
-  status      Dienst- und Videobeweis-Status anzeigen
-  run         Überwachung im Vordergrund (zum Testen, Strg+C beendet)
-  press       Videobeweis-Hotkey einmal senden (Hilfsbefehl des Dienstes)
+  install     Register as a Windows service (autostart) and start it
+              (with -debug: verbose log next to the exe)
+  uninstall   Stop and remove the service
+  status      Show service and Instant Replay status
+  run         Monitor in the foreground (for testing, Ctrl+C exits)
+  press       Send the Instant Replay hotkey once (helper command of the service)
 
-Option -debug (bei install, run): schreibt ausführliche Infos nach
-shadowplay-observer.log neben der exe.
+Option -debug (with install, run): writes verbose info to
+shadowplay-observer.log next to the exe.
 `
 
 func main() {
@@ -47,9 +47,9 @@ func main() {
 	switch cmd {
 	case "install", "uninstall":
 		if !isElevated() {
-			fmt.Println("Administratorrechte nötig, starte neu mit UAC ...")
+			fmt.Println("Administrator rights required, restarting via UAC ...")
 			if err := relaunchElevated(append([]string{cmd}, svcArgs(debugOn)...)); err != nil {
-				fmt.Println("Fehler:", err)
+				fmt.Println("Error:", err)
 				os.Exit(1)
 			}
 			return
@@ -61,22 +61,22 @@ func main() {
 			err = uninstallService()
 		}
 		if err != nil {
-			fmt.Println("Fehler:", err)
+			fmt.Println("Error:", err)
 		} else if cmd == "install" {
-			fmt.Printf("Dienst %q installiert und gestartet. Log: %s\\observer.log\n", svcName, dataDir())
+			fmt.Printf("Service %q installed and started. Log: %s\\observer.log\n", svcName, dataDir())
 		} else {
-			fmt.Printf("Dienst %q entfernt.\n", svcName)
+			fmt.Printf("Service %q removed.\n", svcName)
 		}
 		if elevated {
-			fmt.Print("Enter zum Schließen ...")
+			fmt.Print("Press Enter to close ...")
 			bufio.NewReader(os.Stdin).ReadString('\n')
 		}
 		if err != nil {
 			os.Exit(1)
 		}
 	case "status":
-		fmt.Println("Dienst:      ", serviceStatus())
-		fmt.Println("Videobeweis: ", lastStateInFile(captureLogPath()), "(laut CaptureCore.log)")
+		fmt.Println("Service:       ", serviceStatus())
+		fmt.Println("Instant Replay:", lastStateInFile(captureLogPath()), "(per CaptureCore.log)")
 	case "run":
 		runConsole()
 	case "press":

@@ -17,10 +17,10 @@ import (
 
 const (
 	svcName = "ShadowplayObserver"
-	svcDesc = "Hält den NVIDIA-Videobeweis (Instant Replay) dauerhaft eingeschaltet."
+	svcDesc = "Keeps NVIDIA Instant Replay switched on permanently."
 )
 
-// ---- Logging (Datei mit einfacher Rotation) ----
+// ---- Logging (file with simple rotation) ----
 
 type rotatingFile struct {
 	mu   sync.Mutex
@@ -76,7 +76,7 @@ func newLogger(console bool) *log.Logger {
 	return l
 }
 
-// ---- Dienst ----
+// ---- Service ----
 
 type handler struct{ log *log.Logger }
 
@@ -99,7 +99,7 @@ func (h handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<-
 			case <-done:
 			case <-time.After(10 * time.Second):
 			}
-			h.log.Print("Dienst beendet")
+			h.log.Print("Service stopped")
 			return false, 0
 		}
 	}
@@ -108,14 +108,14 @@ func (h handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<-
 
 func runService() {
 	l := newLogger(false)
-	l.Printf("Dienst startet (debug=%v)", debugOn)
+	l.Printf("Service starting (debug=%v)", debugOn)
 	logEnvironment()
 	if err := svc.Run(svcName, handler{l}); err != nil {
 		l.Printf("svc.Run: %v", err)
 	}
 }
 
-// runConsole: Überwachung im Vordergrund (zum Testen), Strg+C beendet.
+// runConsole: monitoring in the foreground (for testing), Ctrl+C exits.
 func runConsole() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -140,13 +140,13 @@ func installService(debug bool) error {
 	}
 	m, err := mgr.Connect()
 	if err != nil {
-		return fmt.Errorf("Dienstverwaltung: %w", err)
+		return fmt.Errorf("service manager: %w", err)
 	}
 	defer m.Disconnect()
 
 	if s, err := m.OpenService(svcName); err == nil {
 		s.Close()
-		return fmt.Errorf("Dienst %q ist schon installiert (erst 'uninstall')", svcName)
+		return fmt.Errorf("service %q is already installed (run 'uninstall' first)", svcName)
 	}
 	s, err := m.CreateService(svcName, exe, mgr.Config{
 		DisplayName:      "Shadowplay Observer",
@@ -164,7 +164,7 @@ func installService(debug bool) error {
 		{Type: mgr.ServiceRestart, Delay: time.Minute},
 	}, 86400)
 	if err := s.Start(); err != nil {
-		return fmt.Errorf("installiert, aber Start fehlgeschlagen: %w", err)
+		return fmt.Errorf("installed, but start failed: %w", err)
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func uninstallService() error {
 	defer m.Disconnect()
 	s, err := m.OpenService(svcName)
 	if err != nil {
-		return fmt.Errorf("Dienst %q nicht gefunden", svcName)
+		return fmt.Errorf("service %q not found", svcName)
 	}
 	defer s.Close()
 	if st, err := s.Query(); err == nil && st.State != svc.Stopped {
@@ -195,20 +195,20 @@ func uninstallService() error {
 func serviceStatus() string {
 	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
-		return "unbekannt (" + err.Error() + ")"
+		return "unknown (" + err.Error() + ")"
 	}
 	defer windows.CloseServiceHandle(scm)
 	name, _ := windows.UTF16PtrFromString(svcName)
 	h, err := windows.OpenService(scm, name, windows.SERVICE_QUERY_STATUS)
 	if err != nil {
-		return "nicht installiert"
+		return "not installed"
 	}
 	defer windows.CloseServiceHandle(h)
 	var st windows.SERVICE_STATUS
 	if err := windows.QueryServiceStatus(h, &st); err != nil {
-		return "unbekannt"
+		return "unknown"
 	}
-	names := map[uint32]string{windows.SERVICE_STOPPED: "gestoppt", windows.SERVICE_START_PENDING: "startet", windows.SERVICE_STOP_PENDING: "stoppt", windows.SERVICE_RUNNING: "läuft"}
+	names := map[uint32]string{windows.SERVICE_STOPPED: "stopped", windows.SERVICE_START_PENDING: "starting", windows.SERVICE_STOP_PENDING: "stopping", windows.SERVICE_RUNNING: "running"}
 	if n, ok := names[st.CurrentState]; ok {
 		return n
 	}
@@ -217,7 +217,7 @@ func serviceStatus() string {
 
 func isElevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
 
-// relaunchElevated startet die exe mit denselben Argumenten per UAC neu.
+// relaunchElevated restarts the exe with the same arguments via UAC.
 func relaunchElevated(args []string) error {
 	exe, err := os.Executable()
 	if err != nil {

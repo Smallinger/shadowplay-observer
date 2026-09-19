@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// -debug: ausführlichere Ausgaben, zusätzlich in eine Logdatei neben der exe.
+// -debug: verbose output, additionally written to a log file next to the exe.
 var (
 	debugOn  bool
 	debugOut *log.Logger
@@ -38,24 +38,24 @@ func uptime() time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-// logEnvironment schreibt beim Start die Rahmenbedingungen ins Debug-Log.
+// logEnvironment writes the runtime environment to the debug log at startup.
 func logEnvironment() {
 	exe, _ := os.Executable()
 	var sess uint32
 	windows.ProcessIdToSessionId(uint32(os.Getpid()), &sess)
 	user := os.Getenv("USERNAME")
 	dbg("exe=%s args=%q pid=%d", exe, os.Args[1:], os.Getpid())
-	dbg("user=%s session=%d aktive Konsolensitzung=%d", user, sess, int32(windows.WTSGetActiveConsoleSessionId()))
-	dbg("System-Uptime=%s", uptime().Round(time.Second))
-	dbg("Capture-Log=%s Overlay-Log=%q", captureLogPath(), overlayLogPath())
+	dbg("user=%s session=%d active console session=%d", user, sess, int32(windows.WTSGetActiveConsoleSessionId()))
+	dbg("System uptime=%s", uptime().Round(time.Second))
+	dbg("Capture log=%s overlay log=%q", captureLogPath(), overlayLogPath())
 	if t, ok := overlayStart(); ok {
-		dbg("NVIDIA Overlay läuft seit %s (vor %s)", t.Format("15:04:05"), time.Since(t).Round(time.Second))
+		dbg("NVIDIA Overlay running since %s (%s ago)", t.Format("15:04:05"), time.Since(t).Round(time.Second))
 	} else {
-		dbg("NVIDIA Overlay läuft nicht")
+		dbg("NVIDIA Overlay not running")
 	}
 	s, ts, ok := readStartupStatus()
-	dbg("letzter App-Status: %s (ok=%v, Zeile von %s)", s, ok, ts.Format("2006-01-02 15:04:05"))
+	dbg("last app status: %s (ok=%v, line from %s)", s, ok, ts.Format("2006-01-02 15:04:05"))
 	fs, fok := readIREnabled()
-	dbg("ShareSettings.json irEnabled: %s (ok=%v, Datei=%q)", fs, fok, overlayFile("ShareSettings.json"))
-	dbg("Capture-Log letzter Stand: %s, .old: %s", lastStateInFile(captureLogPath()), lastStateInFile(captureLogPath()[:len(captureLogPath())-4]+".old"))
+	dbg("ShareSettings.json irEnabled: %s (ok=%v, file=%q)", fs, fok, overlayFile("ShareSettings.json"))
+	dbg("Capture log last state: %s, .old: %s", lastStateInFile(captureLogPath()), lastStateInFile(captureLogPath()[:len(captureLogPath())-4]+".old"))
 }

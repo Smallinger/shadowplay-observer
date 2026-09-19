@@ -13,15 +13,15 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Die NVIDIA App (NVIDIA Overlay.exe) fragt beim Start den echten Videobeweis-Status ab
-// und schreibt ihn in ihre console.log:
+// On startup the NVIDIA app (NVIDIA Overlay.exe) queries the real Instant Replay status
+// and writes it to its console.log:
 //
 //	2026-09-19 02:37:56.775 INFO  ShadowPlayService  GetInstantReplayEnableStatus returns:  {
 //		"status": true,
 
 const overlayExe = "NVIDIA Overlay.exe"
 
-// overlayStart liefert die Startzeit der ältesten laufenden NVIDIA-Overlay-Instanz.
+// overlayStart returns the start time of the oldest running NVIDIA Overlay instance.
 func overlayStart() (time.Time, bool) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -51,11 +51,11 @@ func overlayStart() (time.Time, bool) {
 	return oldest, found
 }
 
-// overlayLogPath findet die console.log der NVIDIA Overlay im Profil des Benutzers
-// (der Dienst läuft als SYSTEM, deshalb über alle Profile suchen, jüngste gewinnt).
+// overlayLogPath finds the NVIDIA Overlay console.log in the user's profile
+// (the service runs as SYSTEM, so search all profiles; the most recent wins).
 func overlayLogPath() string { return overlayFile("console.log") }
 
-// overlayFile findet eine Datei im NVIDIA-Overlay-Ordner des Benutzers.
+// overlayFile finds a file in the user's NVIDIA Overlay folder.
 func overlayFile(name string) string {
 	var pats []string
 	if la := os.Getenv("LOCALAPPDATA"); la != "" {
@@ -78,8 +78,8 @@ func overlayFile(name string) string {
 
 var statusRe = regexp.MustCompile(`"status":\s*(true|false)`)
 
-// readStartupStatus liefert den letzten von der NVIDIA App gemeldeten Videobeweis-Status
-// samt Zeitstempel der Zeile.
+// readStartupStatus returns the last Instant Replay status reported by the NVIDIA app
+// together with the line's timestamp.
 func readStartupStatus() (irState, time.Time, bool) {
 	path := overlayLogPath()
 	if path == "" {
@@ -126,8 +126,8 @@ func readStartupStatus() (irState, time.Time, bool) {
 
 var irEnabledRe = regexp.MustCompile(`"irEnabled"\s*:\s*(true|false)`)
 
-// readIREnabled liest den dauerhaft gespeicherten Videobeweis-Schalter aus ShareSettings.json
-// (video.irEnabled). NVIDIA schreibt die Datei bei jedem Umschalten sofort.
+// readIREnabled reads the persisted Instant Replay switch from ShareSettings.json
+// (video.irEnabled). NVIDIA writes the file immediately on every toggle.
 func readIREnabled() (irState, bool) {
 	path := overlayFile("ShareSettings.json")
 	if path == "" {

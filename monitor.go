@@ -11,12 +11,12 @@ import (
 	"time"
 )
 
-// Videobeweis == "Instant Replay" (IR) in der NVIDIA App. Der Zustand wird in
-// CaptureCore.log protokolliert, z.B.
+// Instant Replay (IR) in the NVIDIA app. Its state is written to
+// CaptureCore.log, e.g.
 //
-//	CCaptureSession::EvaluateDVRStop: IR(0) HL(0) DVR(0)              -> aus
-//	CCaptureSession::EvaluateAutoDVRStart: Starting DVR capture. IR(1) -> an
-//	DVR Active = true                                                  -> an
+//	CCaptureSession::EvaluateDVRStop: IR(0) HL(0) DVR(0)              -> off
+//	CCaptureSession::EvaluateAutoDVRStart: Starting DVR capture. IR(1) -> on
+//	DVR Active = true                                                  -> on
 type irState int
 
 const (
@@ -28,11 +28,11 @@ const (
 func (s irState) String() string {
 	switch s {
 	case stateOn:
-		return "an"
+		return "on"
 	case stateOff:
-		return "aus"
+		return "off"
 	}
-	return "unbekannt"
+	return "unknown"
 }
 
 var irRe = regexp.MustCompile(`(?:EvaluateDVRStop|EvaluateAutoDVRStart)\b.*\bIR\((\d)\)`)
@@ -58,7 +58,7 @@ func captureLogPath() string {
 	return filepath.Join(pd, "NVIDIA Corporation", "ShadowPlay", "CaptureCore.log")
 }
 
-// lastStateInFile liefert den letzten erkennbaren Zustand aus den letzten 1 MB der Datei.
+// lastStateInFile returns the last recognizable state within the last 1 MB of the file.
 func lastStateInFile(path string) irState {
 	f, err := os.Open(path)
 	if err != nil {
@@ -84,7 +84,7 @@ func lastStateInFile(path string) irState {
 	return res
 }
 
-// tailer liest neue Zeilen aus dem Log und erkennt Rotation (Datei ersetzt/verkleinert).
+// tailer reads new lines from the log and detects rotation (file replaced/truncated).
 type tailer struct {
 	path string
 	pos  int64
@@ -102,7 +102,7 @@ func newTailer(path string) *tailer {
 	return t
 }
 
-// poll liefert alle seit dem letzten Aufruf neu erkannten Zustände.
+// poll returns all states recognized since the last call.
 func (t *tailer) poll() ([]irState, error) {
 	f, err := os.Open(t.path)
 	if err != nil {
@@ -114,7 +114,7 @@ func (t *tailer) poll() ([]irState, error) {
 		return nil, err
 	}
 	if t.id != nil && (!os.SameFile(t.id, fi) || fi.Size() < t.pos) {
-		t.pos = 0 // rotiert: neue Datei von vorne lesen
+		t.pos = 0 // rotated: read the new file from the start
 	}
 	t.id = fi
 	if fi.Size() == t.pos {
@@ -127,26 +127,26 @@ func (t *tailer) poll() ([]irState, error) {
 	}
 	end := bytes.LastIndexByte(buf, '\n')
 	if end < 0 {
-		return nil, nil // unvollständige Zeile, später weiterlesen
+		return nil, nil // incomplete line, keep reading later
 	}
 	t.pos += int64(end + 1)
 	var out []irState
 	for _, line := range bytes.Split(buf[:end], []byte("\n")) {
 		if s := parseState(line); s != stateUnknown {
-			dbg("Capture-Log: %s <- %s", s, bytes.TrimSpace(line))
+			dbg("Capture log: %s <- %s", s, bytes.TrimSpace(line))
 			out = append(out, s)
 		}
 	}
 	return out, nil
 }
 
-// Monitor hält den Videobeweis dauerhaft eingeschaltet.
+// Monitor keeps Instant Replay switched on permanently.
 type Monitor struct {
 	log   *log.Logger
 	path  string
-	press func(ctx context.Context) error // sendet den Videobeweis-Hotkey in die Benutzersitzung
+	press func(ctx context.Context) error // sends the Instant Replay hotkey into the user session
 
-	lastFile irState // zuletzt gelesener Wert von irEnabled aus ShareSettings.json
+	lastFile irState // last irEnabled value read from ShareSettings.json
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) bool {
@@ -171,16 +171,16 @@ func (m *Monitor) Run(ctx context.Context) {
 		state = lastStateInFile(m.path[:len(m.path)-len(filepath.Ext(m.path))] + ".old")
 	}
 	t := newTailer(m.path)
-	m.log.Printf("Überwachung gestartet (%s), Videobeweis laut Log: %s", m.path, state)
-	// ShareSettings.json (irEnabled) ist die genaueste Quelle und hat Vorrang vor dem Log.
+	m.log.Printf("Monitoring started (%s), Instant Replay per log: %s", m.path, state)
+	// ShareSettings.json (irEnabled) is the most accurate source and takes precedence over the log.
 	if fs, ok := readIREnabled(); ok {
 		m.lastFile = fs
 		state = fs
-		m.log.Printf("Videobeweis laut ShareSettings.json: %s", fs)
+		m.log.Printf("Instant Replay per ShareSettings.json: %s", fs)
 	}
 
-	// Ist die NVIDIA App schon länger aktiv, ist das Log aktuell genug. Sonst (Neustart des
-	// Rechners/der App) wird der Status neu von der App abgefragt, siehe syncWithApp.
+	// If the NVIDIA app has been running for a while, the log is current enough. Otherwise (restart of the
+	// PC/app) the status is queried from the app again, see syncWithApp.
 	var seen time.Time
 	if c, ok := overlayStart(); ok {
 		seen = c
@@ -201,17 +201,17 @@ func (m *Monitor) Run(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
-		// Neue App-Instanz (Neustart, Treiber-Update, ...): Status neu abfragen.
+		// New app instance (restart, driver update, ...): query the status again.
 		c, ok := overlayStart()
 		if ok != !seen.IsZero() {
-			dbg("NVIDIA Overlay läuft: %v", ok)
+			dbg("NVIDIA Overlay running: %v", ok)
 			if !ok {
 				seen = time.Time{}
 			}
 		}
 		if ok && !c.Equal(seen) {
 			seen = c
-			m.log.Print("NVIDIA App neu gestartet")
+			m.log.Print("NVIDIA app restarted")
 			state = m.syncWithApp(ctx, c, state)
 			if state == stateOff && m.ensureOn(ctx, t) {
 				state = stateOn
@@ -221,14 +221,14 @@ func (m *Monitor) Run(ctx context.Context) {
 		evs, err := m.pollAll(t)
 		if err != nil {
 			if !warned {
-				m.log.Printf("Log nicht lesbar: %v", err)
+				m.log.Printf("Log not readable: %v", err)
 				warned = true
 			}
 			continue
 		}
 		warned = false
 		if s := lastOf(evs); s != stateUnknown && s != state {
-			m.log.Printf("Videobeweis: %s -> %s", state, s)
+			m.log.Printf("Instant Replay: %s -> %s", state, s)
 			state = s
 			if state == stateOff && m.ensureOn(ctx, t) {
 				state = stateOn
@@ -237,71 +237,71 @@ func (m *Monitor) Run(ctx context.Context) {
 	}
 }
 
-// freshAppWindow: so jung darf die App-Instanz sein, damit ihr Start-Status als maßgeblich gilt.
+// freshAppWindow: how young the app instance may be for its startup status to count as authoritative.
 const freshAppWindow = 15 * time.Minute
 
-// syncWithApp wartet (bis 3 min) auf den Status, den die frisch gestartete NVIDIA App beim
-// Start selbst meldet, und liefert ihn. Das Capture-Log kann nach einem Neustart veraltet sein.
+// syncWithApp waits (up to 3 min) for the status the freshly started NVIDIA app reports on
+// startup, and returns it. The capture log can be stale after a restart.
 func (m *Monitor) syncWithApp(ctx context.Context, appStart time.Time, fallback irState) irState {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
 		s, ts, ok := readStartupStatus()
-		dbg("Warte auf App-Status: gefunden=%v Stand=%s Zeit=%s App-Start=%s", ok, s, ts.Format("15:04:05.000"), appStart.Format("15:04:05.000"))
+		dbg("Waiting for app status: found=%v state=%s time=%s app-start=%s", ok, s, ts.Format("15:04:05.000"), appStart.Format("15:04:05.000"))
 		if ok && !ts.Before(appStart) {
-			m.log.Printf("Videobeweis laut NVIDIA App: %s", s)
+			m.log.Printf("Instant Replay per NVIDIA app: %s", s)
 			return s
 		}
 		if time.Now().After(deadline) || !sleepCtx(ctx, 3*time.Second) {
 			if fs, ok := readIREnabled(); ok {
-				m.log.Printf("Kein Start-Status der NVIDIA App gefunden, nehme ShareSettings.json: %s", fs)
+				m.log.Printf("No startup status from the NVIDIA app, using ShareSettings.json: %s", fs)
 				return fs
 			}
-			m.log.Printf("Kein Start-Status der NVIDIA App gefunden, greife nicht ein (Log-Stand war: %s)", fallback)
+			m.log.Printf("No startup status from the NVIDIA app, not intervening (log state was: %s)", fallback)
 			return stateUnknown
 		}
 	}
 }
 
-// ensureOn schaltet den Videobeweis wieder ein und prüft die Bestätigung.
+// ensureOn switches Instant Replay back on and checks for confirmation.
 func (m *Monitor) ensureOn(ctx context.Context, t *tailer) bool {
-	// Entprellen: beim Spielstart wechselt der Zustand kurz mehrfach.
+	// Debounce: the state briefly flips several times when a game starts.
 	if !sleepCtx(ctx, 2*time.Second) {
 		return false
 	}
 	if evs, _ := m.pollAll(t); m.confirmedOn(evs) {
-		m.log.Print("Videobeweis ist von selbst wieder an")
+		m.log.Print("Instant Replay came back on by itself")
 		return true
 	}
 	for attempt := 1; attempt <= 3; attempt++ {
 		if err := m.press(ctx); err != nil {
-			m.log.Printf("Versuch %d: Hotkey senden fehlgeschlagen: %v", attempt, err)
+			m.log.Printf("Attempt %d: sending hotkey failed: %v", attempt, err)
 			if !sleepCtx(ctx, 20*time.Second) {
 				return false
 			}
 			continue
 		}
-		m.log.Printf("Versuch %d: Hotkey gesendet", attempt)
-		for range 30 { // bis zu 15 s auf Bestätigung warten
+		m.log.Printf("Attempt %d: hotkey sent", attempt)
+		for range 30 { // wait up to 15 s for confirmation
 			if !sleepCtx(ctx, 500*time.Millisecond) {
 				return false
 			}
 			evs, _ := m.pollAll(t)
 			if m.confirmedOn(evs) {
-				m.log.Print("Videobeweis wieder eingeschaltet")
+				m.log.Print("Instant Replay switched back on")
 				return true
 			}
 		}
-		m.log.Printf("Versuch %d: keine Bestätigung", attempt)
+		m.log.Printf("Attempt %d: no confirmation", attempt)
 		if !sleepCtx(ctx, 5*time.Second) {
 			return false
 		}
 	}
-	m.log.Print("Aufgegeben, warte auf das nächste Ereignis")
+	m.log.Print("Giving up, waiting for the next event")
 	return false
 }
 
-// pollAll liefert neue Ereignisse aus dem Capture-Log und Änderungen von irEnabled in
-// ShareSettings.json (die Datei zuletzt, sie gewinnt bei Widerspruch).
+// pollAll returns new events from the capture log and changes of irEnabled in
+// ShareSettings.json (file last, it wins on conflict).
 func (m *Monitor) pollAll(t *tailer) ([]irState, error) {
 	evs, err := t.poll()
 	if fs, ok := readIREnabled(); ok && fs != m.lastFile {
@@ -312,7 +312,7 @@ func (m *Monitor) pollAll(t *tailer) ([]irState, error) {
 	return evs, err
 }
 
-// confirmedOn: laut neuen Ereignissen oder laut gespeichertem Schalter ist der Videobeweis an.
+// confirmedOn: new events or the stored switch say Instant Replay is on.
 func (m *Monitor) confirmedOn(evs []irState) bool {
 	if lastOf(evs) == stateOn {
 		return true

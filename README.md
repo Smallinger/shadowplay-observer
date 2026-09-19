@@ -1,81 +1,80 @@
 # Shadowplay Observer
 
-Kleiner Windows-Dienst in Go, der dafür sorgt, dass der **Videobeweis** (NVIDIA „Instant Replay“)
-der NVIDIA App **dauerhaft eingeschaltet** bleibt. Schaltet er sich aus, etwa nach einem Neustart
-oder App-Update, schaltet der Dienst ihn wieder ein.
+A small Windows service written in Go that keeps **Instant Replay** of the NVIDIA app switched on
+permanently. If it gets turned off, for example after a reboot or an app update, the service turns
+it back on.
 
-Eine einzelne `exe`, die sich selbst als Dienst registrieren kann. Keine Abhängigkeiten außer Windows.
+A single `exe` that can register itself as a service. No dependencies besides Windows.
 
 ## Installation
 
-Voraussetzung: NVIDIA App (mit „NVIDIA Overlay“), Windows 10/11, Go 1.26+ zum Bauen.
+Requirements: NVIDIA app (with "NVIDIA Overlay"), Windows 10/11, Go 1.26+ to build.
 
 ```powershell
 go build -ldflags "-s -w" -o shadowplay-observer.exe .
-shadowplay-observer.exe install          # fragt per UAC nach Adminrechten
+shadowplay-observer.exe install          # asks for admin rights via UAC
 ```
 
-Die exe vorher an ihren endgültigen Ort legen, der Dienst zeigt auf ihren Pfad.
+Put the exe in its final location first, the service points to its path.
 
-| Befehl | Wirkung |
+| Command | Effect |
 |---|---|
-| `install` | Als Dienst registrieren (Autostart, verzögert) und starten |
-| `uninstall` | Dienst stoppen und entfernen |
-| `status` | Dienst- und Videobeweis-Status anzeigen |
-| `run` | Im Vordergrund ausführen (Test, Strg+C beendet) |
-| `press` | Hotkey einmal senden (Hilfsbefehl des Dienstes) |
-| `-debug` | Bei `install`/`run`: ausführliches Log neben der exe |
+| `install` | Register as a service (delayed autostart) and start it |
+| `uninstall` | Stop and remove the service |
+| `status` | Show service and Instant Replay status |
+| `run` | Run in the foreground (testing, Ctrl+C exits) |
+| `press` | Send the hotkey once (helper command of the service) |
+| `-debug` | With `install`/`run`: verbose log next to the exe |
 
 ## Logs
 
-- `%ProgramData%\ShadowplayObserver\observer.log`: normales Log des Dienstes
-- `shadowplay-observer.log` neben der exe: nur mit `-debug` (auch als Dienst, wenn mit `install -debug`
-  installiert). Enthält Umgebung, erkannte Log-Zeilen, App-Status und Helferprozess.
+- `%ProgramData%\ShadowplayObserver\observer.log`: regular service log
+- `shadowplay-observer.log` next to the exe: only with `-debug` (also as a service when installed with
+  `install -debug`). Contains the environment, recognized log lines, app status and helper process.
 
-Beide Dateien rotieren bei etwa 1 MB (`.old`).
+Both files rotate at about 1 MB (`.old`).
 
-## Wie es funktioniert
+## How it works
 
-**Zustand erkennen.** Zwei Quellen, die Datei hat Vorrang:
+**Detecting the state.** Two sources, the file takes precedence:
 
-1. `%LOCALAPPDATA%\NVIDIA Corporation\NVIDIA Overlay\ShareSettings.json`, Feld `video.irEnabled`.
-   NVIDIA schreibt es bei jedem Umschalten sofort, und beim Start liest die App genau diesen Wert.
-   Der Dienst läuft als SYSTEM und findet die Datei über `C:\Users\*`.
-2. `%ProgramData%\NVIDIA Corporation\ShadowPlay\CaptureCore.log`, Zeilen wie
-   `EvaluateDVRStop: IR(0)` und `DVR Active = true`.
+1. `%LOCALAPPDATA%\NVIDIA Corporation\NVIDIA Overlay\ShareSettings.json`, field `video.irEnabled`.
+   NVIDIA writes it immediately on every toggle, and on startup the app reads exactly this value.
+   The service runs as SYSTEM and finds the file via `C:\Users\*`.
+2. `%ProgramData%\NVIDIA Corporation\ShadowPlay\CaptureCore.log`, lines such as
+   `EvaluateDVRStop: IR(0)` and `DVR Active = true`.
 
-In der Registry liegt der Zustand nicht, dort stehen nur Einstellungen.
+The state is not stored in the registry, which only holds settings.
 
-**Wieder einschalten.** Der Dienst sendet den in der Registry (`IRToggleHKey*`) hinterlegten
-Videobeweis-Hotkey (Standard Alt+Shift+F10). Ein Dienst läuft in Session 0 und kann keine Tasten in die
-Benutzersitzung senden. Deshalb startet er dieselbe exe als Helfer (`press`) mit dem Token des
-angemeldeten Benutzers auf `winsta0\default`. Danach wartet er auf die Bestätigung
-(`irEnabled: true` oder Log). Bis zu 3 Versuche, dann wartet er auf das nächste Ereignis.
+**Turning it back on.** The service sends the Instant Replay hotkey stored in the registry
+(`IRToggleHKey*`, default Alt+Shift+F10). A service runs in session 0 and cannot send keystrokes into
+the user session. So it launches the same exe as a helper (`press`) with the logged-in user's token on
+`winsta0\default`. Afterwards it waits for confirmation (`irEnabled: true` or the log). Up to 3
+attempts, then it waits for the next event.
 
-**Nach Neustart oder App-Neustart.** Der Dienst erkennt eine neue Instanz von `NVIDIA Overlay.exe`
-über deren Startzeit, nicht über die Systemlaufzeit (die ist wegen Schnellstart unzuverlässig). Er
-wartet auf den Start-Status der App (`GetInstantReplayEnableStatus` in `console.log`), bevor er den
-Hotkey sendet.
+**After a reboot or app restart.** The service detects a new `NVIDIA Overlay.exe` instance by its
+process start time, not by system uptime (which is unreliable because of Fast Startup). It waits for
+the app's startup status (`GetInstantReplayEnableStatus` in `console.log`) before sending the hotkey.
 
-**Absicherung.** Der Hotkey schaltet nur um. Damit er nie versehentlich ausschaltet, sendet der Dienst
-ihn nur, wenn `irEnabled` tatsächlich `false` ist bzw. bei fehlender Datei der Zustand aus den Logs
-sicher „aus“ ist.
+**Safety.** The hotkey only toggles. To make sure it never turns Instant Replay off by accident, the
+service only sends it when `irEnabled` is actually `false`, or, if the file is missing, when the log
+state is reliably "off".
 
-## Grenzen
+## Limitations
 
-- Abhängig von Dateiformaten der NVIDIA App. Ein App-Update kann sie ändern, die Muster stehen in
-  `monitor.go` und `nvapp.go`.
-- Der Dienst prüft nur den globalen Schalter, nicht, ob in einem bestimmten Spiel gerade aufgezeichnet wird.
-- Wer den Videobeweis absichtlich ausschaltet, bekommt ihn wieder eingeschaltet. Zum Pausieren `uninstall`.
-- Nur mit der NVIDIA App getestet (nicht GeForce Experience).
+- Depends on file formats of the NVIDIA app. An app update may change them, the patterns are in
+  `monitor.go` and `nvapp.go`.
+- Only the global switch is checked, not whether a specific game is currently being recorded.
+- If you turn Instant Replay off on purpose, it gets turned back on. Use `uninstall` to pause.
+- Tested with the NVIDIA app only (not GeForce Experience).
 
-## Dateien
+## Files
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `main.go` | Befehle und Argumente |
-| `service.go` | Dienst, Installation, Logging |
-| `monitor.go` | Überwachung, Wiedereinschalten |
-| `nvapp.go` | NVIDIA-App-Prozess, `console.log`, `ShareSettings.json` |
-| `session.go` | Helferprozess in der Benutzersitzung, Hotkey senden |
-| `debug.go` | `-debug`-Ausgaben |
+| `main.go` | Commands and arguments |
+| `service.go` | Service, installation, logging |
+| `monitor.go` | Monitoring, switching back on |
+| `nvapp.go` | NVIDIA app process, `console.log`, `ShareSettings.json` |
+| `session.go` | Helper process in the user session, sending the hotkey |
+| `debug.go` | `-debug` output |

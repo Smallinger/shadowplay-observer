@@ -359,10 +359,12 @@ func (g glyph) covers(x, y float64) bool {
 }
 
 // renderIcon returns an n×n top-down BGRA image: the glyph in fg on an opaque black square.
-// The glyphs use a 24 unit box and span about 1..23, so 0.5..23.5 is shown to fill the icon.
-func renderIcon(n int, g glyph, fg [3]byte) []byte {
+// The glyphs use a 24 unit box and their artwork spans about 22 units (1..23). fill is the
+// share of the icon that artwork should take: 1 = edge to edge, 0.78 = a visible black margin.
+func renderIcon(n int, g glyph, fg [3]byte, fill float64) []byte {
 	const ss = 4 // 4x4 supersampling for smooth edges at 16..32 px
-	const lo, span = 0.5, 23.0
+	span := 22 / fill
+	lo := 12 - span/2
 	pix := make([]byte, n*n*4)
 	for py := 0; py < n; py++ {
 		for px := 0; px < n; px++ {
@@ -386,3 +388,10 @@ func renderIcon(n int, g glyph, fg [3]byte) []byte {
 	}
 	return pix
 }
+
+// How much of the icon the artwork fills: the tray icon keeps some black margin, the
+// README logo is nearly edge to edge.
+const (
+	trayFill = 0.78
+	logoFill = 0.96
+)

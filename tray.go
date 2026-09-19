@@ -135,7 +135,7 @@ func iconSize() int {
 // makeIcon renders the glyph in fg on black (see icon.go) and turns it into an HICON.
 func makeIcon(g glyph, fg [3]byte) uintptr {
 	n := iconSize()
-	pix := renderIcon(n, g, fg)
+	pix := renderIcon(n, g, fg, trayFill)
 	color, _, _ := pCreateBitmap.Call(uintptr(n), uintptr(n), 1, 32, uintptr(unsafe.Pointer(&pix[0])))
 	maskBits := make([]byte, ((n+15)/16*2)*n) // 1 bpp rows are 16-bit aligned; all zero = opaque
 	mask, _, _ := pCreateBitmap.Call(uintptr(n), uintptr(n), 1, 1, uintptr(unsafe.Pointer(&maskBits[0])))

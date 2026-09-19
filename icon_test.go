@@ -14,7 +14,7 @@ func TestGlyphsParseAndRender(t *testing.T) {
 			t.Fatalf("%s: no shapes", name)
 		}
 		for _, n := range []int{16, 24, 32} {
-			pix := renderIcon(n, g, colorActive)
+			pix := renderIcon(n, g, colorActive, trayFill)
 			lit := 0
 			for i := 0; i < n*n; i++ {
 				if pix[i*4+1] > 0 { // green channel
@@ -51,7 +51,7 @@ func TestWriteLogo(t *testing.T) {
 		t.Skip("set WRITE_LOGO=1 to regenerate assets/logo.png")
 	}
 	const n = 512
-	pix := renderIcon(n, glyphActive, colorActive)
+	pix := renderIcon(n, glyphActive, colorActive, logoFill)
 	img := image.NewRGBA(image.Rect(0, 0, n, n))
 	for i := 0; i < n*n; i++ {
 		img.Set(i%n, i/n, color.RGBA{pix[i*4+2], pix[i*4+1], pix[i*4], 255})

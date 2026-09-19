@@ -25,7 +25,9 @@ Put the exe in its final location first, both variants point to its path.
 | `install service` | Register a Windows service (delayed autostart, runs as SYSTEM) and start it. Needs admin (UAC). |
 | `uninstall autostart` | Remove the autostart entry and stop the running instance |
 | `uninstall service` | Stop and remove the service |
-| `status` | Show service, autostart and Instant Replay status |
+| `pause [duration]` | Pause monitoring, e.g. `pause 2h`, `pause 30m`; without duration until `resume` |
+| `resume` | Resume monitoring |
+| `status` | Show service, autostart, pause and Instant Replay status |
 | `run` | Run in the foreground (testing, Ctrl+C exits) |
 | `press` | Send the hotkey once (helper command of the service) |
 | `-debug` | With `install`/`run`: verbose log next to the exe |
@@ -35,6 +37,16 @@ sends the hotkey itself. It starts when you log on. The service starts at boot, 
 logged in, and launches a helper in the user session to send the hotkey. Use one of them. If both are
 installed, a single-instance lock ensures only one is active at a time (the service takes over when the
 autostart instance ends), otherwise both would toggle the hotkey and cancel each other out.
+
+**Tray icon.** In autostart mode a small icon appears in the notification area (Windows 11 may put it
+in the overflow flyout first: drag it out to keep it visible). Green = monitoring active, grey with bars =
+paused. Left click toggles pause, right click opens a menu (Pause/Resume, Exit). The tooltip shows the
+state of Instant Replay.
+
+**Pausing.** `pause` and the tray icon share one small file,
+`%LOCALAPPDATA%\ShadowplayObserver\paused` (an expiry time, or `indefinite`), which both the autostart
+instance and the service look at. So `pause 2h` works with either mode, and the tray icon reflects it.
+While paused, Instant Replay is left alone; on resume it is switched back on if it is off.
 
 The autostart entry runs `conhost.exe --headless "<exe>" run --background`, so no console window shows up.
 
@@ -78,7 +90,7 @@ state is reliably "off".
 - Depends on file formats of the NVIDIA app. An app update may change them, the patterns are in
   `monitor.go` and `nvapp.go`.
 - Only the global switch is checked, not whether a specific game is currently being recorded.
-- If you turn Instant Replay off on purpose, it gets turned back on. Use `uninstall` to pause.
+- If you turn Instant Replay off on purpose, it gets turned back on. Use `pause` or the tray icon to pause.
 - Tested with the NVIDIA app only (not GeForce Experience).
 
 ## Files
@@ -88,6 +100,8 @@ state is reliably "off".
 | `main.go` | Commands and arguments |
 | `service.go` | Service, installation, logging |
 | `autostart.go` | Autostart (HKCU Run key), single-instance lock |
+| `pause.go` | Pause state file (`pause` / `resume`) |
+| `tray.go` | Tray icon (plain Win32) |
 | `monitor.go` | Monitoring, switching back on |
 | `nvapp.go` | NVIDIA app process, `console.log`, `ShareSettings.json` |
 | `session.go` | Helper process in the user session, sending the hotkey |

@@ -188,9 +188,11 @@ func (m *Monitor) Run(ctx context.Context) {
 			state = m.syncWithApp(ctx, c, state)
 		}
 	}
-	if state == stateOff && m.ensureOn(ctx, t) {
-		state = stateOn
+	wasPaused := isPaused()
+	if wasPaused {
+		m.log.Printf("Monitoring is paused (%s)", pauseDescription())
 	}
+	m.enableIfNeeded(ctx, t, &state)
 
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -200,6 +202,16 @@ func (m *Monitor) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+		}
+		// Pause / resume (tray icon, `pause` / `resume` command).
+		if p := isPaused(); p != wasPaused {
+			wasPaused = p
+			if p {
+				m.log.Printf("Monitoring paused (%s)", pauseDescription())
+			} else {
+				m.log.Print("Monitoring resumed")
+				m.enableIfNeeded(ctx, t, &state)
+			}
 		}
 		// New app instance (restart, driver update, ...): query the status again.
 		c, ok := overlayStart()
@@ -213,9 +225,7 @@ func (m *Monitor) Run(ctx context.Context) {
 			seen = c
 			m.log.Print("NVIDIA app restarted")
 			state = m.syncWithApp(ctx, c, state)
-			if state == stateOff && m.ensureOn(ctx, t) {
-				state = stateOn
-			}
+			m.enableIfNeeded(ctx, t, &state)
 			continue
 		}
 		evs, err := m.pollAll(t)
@@ -230,10 +240,22 @@ func (m *Monitor) Run(ctx context.Context) {
 		if s := lastOf(evs); s != stateUnknown && s != state {
 			m.log.Printf("Instant Replay: %s -> %s", state, s)
 			state = s
-			if state == stateOff && m.ensureOn(ctx, t) {
-				state = stateOn
-			}
+			m.enableIfNeeded(ctx, t, &state)
 		}
+	}
+}
+
+// enableIfNeeded switches Instant Replay back on if it is off, unless monitoring is paused.
+func (m *Monitor) enableIfNeeded(ctx context.Context, t *tailer, state *irState) {
+	if *state != stateOff {
+		return
+	}
+	if isPaused() {
+		m.log.Print("Instant Replay is off, but monitoring is paused")
+		return
+	}
+	if m.ensureOn(ctx, t) {
+		*state = stateOn
 	}
 }
 
@@ -273,6 +295,10 @@ func (m *Monitor) ensureOn(ctx context.Context, t *tailer) bool {
 		return true
 	}
 	for attempt := 1; attempt <= 3; attempt++ {
+		if isPaused() {
+			m.log.Print("Paused, not switching Instant Replay on")
+			return false
+		}
 		if err := m.press(ctx); err != nil {
 			m.log.Printf("Attempt %d: sending hotkey failed: %v", attempt, err)
 			if !sleepCtx(ctx, 20*time.Second) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/windows/svc"
 )
@@ -18,12 +19,16 @@ const usage = `Shadowplay Observer - keeps NVIDIA Instant Replay switched on.
   install autostart    Start at logon of the current user (no admin needed), starts it now
   uninstall service    Stop and remove the service
   uninstall autostart  Remove the autostart entry and stop the running instance
-  status               Show service, autostart and Instant Replay status
+  pause [duration]     Pause monitoring (e.g. pause 2h); without duration until 'resume'
+  resume               Resume monitoring
+  status               Show service, autostart, pause and Instant Replay status
   run                  Monitor in the foreground (for testing, Ctrl+C exits)
   press                Send the Instant Replay hotkey once (helper command of the service)
 
 Option -debug (with install, run): writes verbose info to
 shadowplay-observer.log next to the exe.
+
+Autostart shows a tray icon: click = pause/resume, right click = menu.
 
 Use either the service or autostart. If both are installed, only one of them
 is active at a time.
@@ -89,9 +94,30 @@ func main() {
 			fmt.Printf("Usage: %s %s <service|autostart> [-debug]\n", os.Args[0], cmd)
 			os.Exit(2)
 		}
+	case "pause":
+		var d time.Duration
+		if len(args) > 1 {
+			var err error
+			if d, err = time.ParseDuration(args[1]); err != nil || d <= 0 {
+				fmt.Println("Usage: pause [duration], e.g. pause 2h or pause 30m (no duration = until resume)")
+				os.Exit(2)
+			}
+		}
+		if err := setPause(d); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+		fmt.Println("Monitoring:", pauseDescription())
+	case "resume":
+		if err := clearPause(); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+		fmt.Println("Monitoring:", pauseDescription())
 	case "status":
 		fmt.Println("Service:       ", serviceStatus())
 		fmt.Println("Autostart:     ", autostartStatus())
+		fmt.Println("Monitoring:    ", pauseDescription())
 		fmt.Println("Instant Replay:", lastStateInFile(captureLogPath()), "(per CaptureCore.log)")
 	case "run":
 		runConsole()

@@ -66,9 +66,15 @@ func programDataDir() string {
 // local app data for autostart/foreground runs (the user may not write to ProgramData).
 func dataDir() string {
 	if !asService {
-		if la := os.Getenv("LOCALAPPDATA"); la != "" {
-			return filepath.Join(la, "ShadowplayObserver")
-		}
+		return userDataDir()
+	}
+	return programDataDir()
+}
+
+// userDataDir is %LOCALAPPDATA%\ShadowplayObserver (falls back to ProgramData).
+func userDataDir() string {
+	if la := os.Getenv("LOCALAPPDATA"); la != "" {
+		return filepath.Join(la, "ShadowplayObserver")
 	}
 	return programDataDir()
 }
@@ -154,6 +160,12 @@ func runConsole() {
 	defer releaseInstance()
 	logEnvironment()
 	m := &Monitor{log: l, path: captureLogPath(), press: func(ctx context.Context) error { return pressHotkey() }}
+	if backgroundMode {
+		// Autostart: monitor in the background, tray icon on the main thread.
+		go m.Run(ctx)
+		runTray(ctx, cancel)
+		return
+	}
 	m.Run(ctx)
 }
 

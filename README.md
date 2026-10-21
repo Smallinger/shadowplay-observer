@@ -12,6 +12,8 @@ gets turned off, for example after a reboot or an app update, it switches it bac
 - Tray icon with a pause toggle: green = active, red = paused.
 - Follows a hotkey you changed in the NVIDIA app.
 
+Prebuilt exe: see [Releases](../../releases/latest). Otherwise, build it yourself:
+
 ## Build
 
 Requires Go 1.26+ and Windows 10/11 with the NVIDIA app installed.
@@ -37,7 +39,11 @@ Other commands: `install service` / `uninstall service` (Windows service, needs 
 
 Everything else, how it works, logs and limitations: **[docs/DETAILS.md](docs/DETAILS.md)**.
 
-## Note on assets
+## License
 
-The tray icons are NVIDIA's own Instant Replay icons (`assets/nvidia/`). They belong to NVIDIA, so keep
-this repository private or replace them before publishing.
+MIT, see [LICENSE](LICENSE) — except the tray icons, see below.
+
+The tray icons (`assets/nvidia/`) are NVIDIA's own Instant Replay icons, extracted from the NVIDIA app so
+the tray matches it visually. They belong to NVIDIA and are not covered by this repository's MIT license.
+See [docs/DETAILS.md](docs/DETAILS.md#14-assets-and-licensing) for where they come from.
+

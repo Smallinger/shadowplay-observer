@@ -324,6 +324,11 @@ $env:WRITE_LOGO = "1"; go test -run TestWriteLogo
 
 `assets/nvidia/replay.svg` and `replay_disabled.svg` are the Instant Replay icons of the NVIDIA app. They
 were extracted from its overlay (the SVG sprite symbols `replay` and `replay_disabled` in
-`osc/main.*.js`) and are embedded into the exe for the tray icon. They belong to NVIDIA. Keep the
-repository private, or replace them before publishing, for example with `assets/icon.svg`, a similar own
-drawing. `icon.go` only needs the two SVG files to contain plain `<path d="...">` elements.
+`osc/main.*.js`) and are embedded into the exe for the tray icon, so it matches the NVIDIA app visually.
+
+They belong to NVIDIA, not to this project: they are excluded from this repository's MIT license (see
+the [README](../README.md#license)), and are used here only for that visual match, for a tool that exists
+to interoperate with the NVIDIA app. If you prefer not to ship them, swap them for your own drawing, for
+example `assets/icon.svg`, and point `icon.go`'s `//go:embed` and `glyphActive`/`glyphPaused` at it.
+`icon.go` only needs the SVG file to contain plain `<path d="...">` elements (no `<use>`/`<defs>`), each
+optionally with `fill-rule="evenodd"`.
